@@ -24,7 +24,7 @@
   <parent>
     <artifactId>flume-parent</artifactId>
     <groupId>org.apache.flume</groupId>
-    <version>1.4.0.ean-SNAPSHOT</version>
+    <version>1.4.0.1.ean-SNAPSHOT</version>
   </parent>
 
   <artifactId>flume-ng-dist</artifactId>
