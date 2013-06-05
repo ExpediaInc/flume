@@ -468,11 +468,16 @@ limitations under the License.
   </repositories>
 
   <distributionManagement>
-    <repository>
-      <id>apache.staging.https</id>
-      <name>Apache Staging Repository</name>
-      <url>https://repository.apache.org/service/local/staging/deploy/maven2/</url>
-    </repository>
+		<repository>
+			<id>ext-releases-local</id>
+			<name>EAN External Release Repo</name>
+			<url>http://chelstgtn07.karmalab.net:8081/artifactory/ext-releases-local</url>
+		</repository>
+		<snapshotRepository>
+			<id>ext-snapshots-local</id>
+			<name>EAN Ext Snapshot Repo</name>
+			<url>http://chelstgtn07.karmalab.net:8081/artifactory/ext-snapshots-local</url>
+		</snapshotRepository>
     <site>
       <id>apache.website</id>
       <url>${siteUrlDeployment}</url>
