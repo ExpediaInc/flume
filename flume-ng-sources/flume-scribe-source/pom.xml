@@ -23,7 +23,7 @@ limitations under the License.
   <parent>
     <artifactId>flume-ng-sources</artifactId>
     <groupId>org.apache.flume</groupId>
-    <version>1.4.0.1.ean</version>
+    <version>1.4.0.2.ean-SNAPSHOT</version>
   </parent>
 
   <groupId>org.apache.flume.flume-ng-sources</groupId>
