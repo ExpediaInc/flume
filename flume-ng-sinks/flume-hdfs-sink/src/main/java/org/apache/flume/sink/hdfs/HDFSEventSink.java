@@ -34,6 +34,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.collect.Maps;
 import org.apache.flume.Channel;
 import org.apache.flume.Clock;
 import org.apache.flume.Context;
@@ -84,6 +85,8 @@ public class HDFSEventSink extends AbstractSink implements Configurable {
   private static final long defaultRetryInterval = 180;
   // Retry forever.
   private static final int defaultTryCount = Integer.MAX_VALUE;
+
+  private static final boolean defaultCloseWritersOnException = false;
 
   /**
    * Default length of time we wait for blocking BucketWriter calls
@@ -151,6 +154,7 @@ public class HDFSEventSink extends AbstractSink implements Configurable {
   private long retryInterval;
   private int tryCount;
 
+  private boolean closeWritersOnException;
 
   /*
    * Extended Java LinkedHashMap for open file handle LRU queue.
@@ -243,6 +247,8 @@ public class HDFSEventSink extends AbstractSink implements Configurable {
         "it may remain open and will not be renamed.");
       tryCount = 1;
     }
+    closeWritersOnException = context.getBoolean("hdfs.closeWritersOnException",
+        defaultCloseWritersOnException);
 
     Preconditions.checkArgument(batchSize > 0,
         "batchSize must be greater than 0");
@@ -460,7 +466,10 @@ public class HDFSEventSink extends AbstractSink implements Configurable {
       }
     } catch (IOException eIO) {
       transaction.rollback();
-      LOG.warn("HDFS IO error", eIO);
+      LOG.error("HDFS IO error", eIO);
+      if (closeWritersOnException) {
+        closeActiveBucketWriters();
+      }
       return Status.BACKOFF;
     } catch (Throwable th) {
       transaction.rollback();
@@ -472,6 +481,32 @@ public class HDFSEventSink extends AbstractSink implements Configurable {
       }
     } finally {
       transaction.close();
+    }
+  }
+
+  private void closeActiveBucketWriters() {
+    LOG.info("Closing all active bucket writers");
+    // make a defensive copy to avoid the concurrent modification exception on
+    // closing elements that then come back and remove them selves.
+    Map<String, BucketWriter> writersCopy;
+    synchronized (sfWritersLock) {
+      writersCopy = Maps.newLinkedHashMap(sfWriters);
+    }
+    // attempt to close every bucket writer
+    for (Map.Entry<String,BucketWriter> entry : writersCopy.entrySet()) {
+      BucketWriter writer = entry.getValue();
+      try {
+        writer.close(true);
+      } catch (IOException e) {
+        LOG.error("Failed to close BucketWriter for [{}], will remove bucket writer completely",
+            entry.getKey(), e);
+        synchronized (sfWritersLock) {
+          sfWriters.remove(entry.getKey());
+        }
+      } catch (InterruptedException e) {
+        LOG.warn("Interrupted while attempting to close all bucket writers");
+        Thread.currentThread().interrupt(); // reset interrupt flag and return.
+      }
     }
   }
 
