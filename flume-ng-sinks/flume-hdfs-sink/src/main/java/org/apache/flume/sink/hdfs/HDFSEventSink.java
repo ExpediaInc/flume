@@ -445,10 +445,7 @@ public class HDFSEventSink extends AbstractSink implements Configurable {
         sinkCounter.incrementBatchUnderflowCount();
       }
 
-      // flush all pending buckets before committing the transaction
-      for (BucketWriter bucketWriter : writers) {
-        bucketWriter.flush();
-      }
+      flushWriters(writers);
 
       transaction.commit();
 
@@ -472,6 +469,30 @@ public class HDFSEventSink extends AbstractSink implements Configurable {
       }
     } finally {
       transaction.close();
+    }
+  }
+
+  private void flushWriters(List<BucketWriter> writers) throws InterruptedException, IOException {
+    // flush all pending buckets
+    // close any that error and rethrow the first exception
+    IOException caught = null;
+    for (BucketWriter bucketWriter : writers) {
+      try {
+        bucketWriter.flush();
+      } catch (IOException io) {
+        LOG.warn("Caught IOException attempting to flush: {}, will close", bucketWriter, io);
+        if (caught == null) {
+          caught = io;
+        }
+        try {
+          bucketWriter.close(true);
+        } catch (IOException e2) {
+          LOG.warn("Caught IOException while closing bucketWriter: {}", bucketWriter, e2);
+        }
+      }
+    }
+    if (caught != null) {
+      throw new IOException("Failed to flush writers", caught);
     }
   }
 

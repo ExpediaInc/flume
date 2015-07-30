@@ -1445,4 +1445,75 @@ public class TestHDFSEventSink {
     Assert.assertEquals(6, totalCloseAttempts);
 
   }
+
+  @Test
+  public void testFlushFailuresCloseWriter() throws InterruptedException,
+      LifecycleException, EventDeliveryException, IOException {
+
+    LOG.debug("Starting...");
+    final int numBatches = 3;
+    final String fileName = "FlumeData";
+    final long rollCount = 50;
+    final long batchSize = 2;
+    String newPath = testPath + "/singleBucket";
+
+    HDFSTestWriterFactory badWriterFactory = new HDFSTestWriterFactory();
+    sink = new HDFSEventSink(badWriterFactory);
+
+    // clear the test directory
+    Configuration conf = new Configuration();
+    FileSystem fs = FileSystem.get(conf);
+    Path dirPath = new Path(newPath);
+    fs.delete(dirPath, true);
+    fs.mkdirs(dirPath);
+
+    Context context = new Context();
+
+    context.put("hdfs.path", newPath);
+    context.put("hdfs.filePrefix", fileName);
+    context.put("hdfs.rollCount", String.valueOf(rollCount));
+    context.put("hdfs.batchSize", "4");
+    context.put("hdfs.fileType", HDFSTestWriterFactory.TestSequenceFileType);
+
+    Configurables.configure(sink, context);
+
+    MemoryChannel channel = new MemoryChannel();
+    Configurables.configure(channel, new Context());
+
+    sink.setChannel(channel);
+    sink.start();
+
+    Calendar eventDate = Calendar.getInstance();
+    List<String> bodies = Lists.newArrayList();
+    // push the event batches into channel
+    for (int i = 1; i <= numBatches; i++) {
+      channel.getTransaction().begin();
+      try {
+        for (int j = 1; j <= batchSize; j++) {
+          Event event = new SimpleEvent();
+          eventDate.clear();
+          eventDate.set(2011, i, i, i, 0); // yy mm dd
+          event.getHeaders().put("timestamp",
+              String.valueOf(eventDate.getTimeInMillis()));
+          event.getHeaders().put("hostname", "Host" + i);
+          String body = "Test." + i + "." + j;
+          event.setBody(body.getBytes());
+          bodies.add(body);
+          // inject fault if on the first batch
+          if (i == 2) event.getHeaders().put("fault-sync-once", "");
+
+          channel.put(event);
+        }
+        channel.getTransaction().commit();
+      } finally {
+        channel.getTransaction().close();
+      }
+      LOG.info("execute sink to process the events: " + sink.process());
+    }
+    LOG.info("clear any events pending due to errors: " + sink.process());
+    sink.stop();
+
+    verifyOutputSequenceFiles(fs, conf, dirPath.toUri().getPath(), fileName, bodies);
+  }
+
 }
