@@ -29,6 +29,8 @@ public class HDFSTestSeqWriter extends HDFSSequenceFile {
   protected volatile boolean closed, opened;
 
   private int openCount = 0;
+  private boolean syncFault = false;
+
   HDFSTestSeqWriter(int openCount) {
     this.openCount = openCount;
   }
@@ -52,9 +54,12 @@ public class HDFSTestSeqWriter extends HDFSSequenceFile {
       throw new IOException("Injected fault");
     } else if (e.getHeaders().containsKey("fault-until-reopen")) {
       // opening first time.
-      if(openCount == 1) {
+      if (openCount == 1) {
         throw new IOException("Injected fault-until-reopen");
       }
+    } else if (e.getHeaders().containsKey("fault-sync-once")) {
+      this.syncFault = true;
+      e.getHeaders().remove("fault-sync-once"); // shouldn't really do this to an event in a writer
     } else if (e.getHeaders().containsKey("slow")) {
       long waitTime = Long.parseLong(e.getHeaders().get("slow"));
       try {
@@ -71,5 +76,13 @@ public class HDFSTestSeqWriter extends HDFSSequenceFile {
   public void close() throws IOException {
     closed = true;
     super.close();
+  }
+
+  @Override
+  public void sync() throws IOException {
+    if (syncFault) {
+      throw new IOException("Sync is broken on this bucket writer");
+    }
+    super.sync();
   }
 }
